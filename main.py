@@ -1,48 +1,52 @@
 import discord
 from discord.ext import commands
+import time
+import asyncio
 
 f=open("token.txt", "r")
 
 TOKEN=f.readlines()[0]
 
+connections=[]
+
 f.close()
 
 print(TOKEN)
 
-client=commands.Bot(command_prefix = "-")
+bot=commands.Bot(command_prefix = "")
 
-@client.event
+@bot.event
+@bot.event
 async def on_ready():
-    print("Hello human")
+    print("Everything's all ready to go~")
 
-@client.command(pass_context=True)
+@bot.command()
 async def join(ctx):
-    #print(ctx.message)
-    channel = ctx.message.author.voice.channel
-    print("joining channel ", channel)
+    channel = ctx.author.voice.channel 
+    print(channel)
     await channel.connect()
 
-@client.command(pass_context=True)
-async def play(ctx):
-    #print(ctx.message)
-    await ctx.send("que voy e que voy")
+@bot.command()
+async def disconnect(ctx):
+   for vc in bot.voice_clients:
+       if vc.channel==ctx.author.voice.channel:
+           print("disconnecting from: ", vc.channel)
+           await vc.disconnect()
 
-    voice = get(client.voice_clients, guild=ctx.guild)
-
-    ydl_opts = {
-        'format' : 'bestaudio/best',
-        'postprocessors' : [(
-            'key' : 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        )]
-    }
-    #play( open("musica.mp3") )
-
-    voice.play(discord.FFmpegExtractAudio)
+@bot.command()
+async def ping(ctx):
+    '''
+    This text will be shown in the help command
+    '''
+    # Get the latency of the bot
+    latency = bot.latency  # Included in the Discord.py library
+    # Send it to the user
+    await ctx.send("pong! "+str(bot.latency))
 
 
-#print("Hello human")
+@bot.command()
+async def echo(ctx, *, content:str):
+    await ctx.send(content)
 
 
-client.run(TOKEN)
+bot.run(TOKEN)
