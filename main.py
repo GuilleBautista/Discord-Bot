@@ -3,7 +3,7 @@ from discord.ext import commands
 
 f=open("token.txt", "r")
 
-TOKEN=f.readline()
+TOKEN=f.readlines()[0]
 
 f.close()
 
@@ -17,9 +17,30 @@ async def on_ready():
 
 @client.command(pass_context=True)
 async def join(ctx):
-    channel = ctx.message.author.voice.voice_channel
+    #print(ctx.message)
+    channel = ctx.message.author.voice.channel
     print("joining channel ", channel)
-    await client.join_voice_channel(channel)
+    await channel.connect()
+
+@client.command(pass_context=True)
+async def play(ctx):
+    #print(ctx.message)
+    await ctx.send("que voy e que voy")
+
+    voice = get(client.voice_clients, guild=ctx.guild)
+
+    ydl_opts = {
+        'format' : 'bestaudio/best',
+        'postprocessors' : [(
+            'key' : 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        )]
+    }
+    #play( open("musica.mp3") )
+
+    voice.play(discord.FFmpegExtractAudio)
+
 
 #print("Hello human")
 
