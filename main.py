@@ -25,6 +25,7 @@ async def join(ctx):
     channel = ctx.author.voice.channel 
     print(channel)
     await channel.connect()
+    await ctx.send("Joined channel: "+str(channel))
 
 @bot.command()
 async def disconnect(ctx):
@@ -32,6 +33,16 @@ async def disconnect(ctx):
        if vc.channel==ctx.author.voice.channel:
            print("disconnecting from: ", vc.channel)
            await vc.disconnect()
+
+@bot.command()
+async def play(ctx):
+    print("im going to load the file")
+    source = discord.FFmpegPCMAudio("musica.mp3")
+    print("file loaded, searching voice client")
+    for vclient in bot.voice_clients:
+        if vclient.channel==ctx.author.voice.channel:
+            vclient.play(source)
+    print("ended playing")
 
 @bot.command()
 async def ping(ctx):
