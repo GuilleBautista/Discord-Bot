@@ -13,7 +13,7 @@ f.close()
 
 print(TOKEN)
 
-bot=commands.Bot(command_prefix = "")
+bot=commands.Bot(command_prefix = ".")
 
 @bot.event
 @bot.event
