@@ -6,6 +6,7 @@ from discord.ext import commands, tasks
 import time
 import asyncio
 
+import subprocess
 import threading
 
 import youtube_dl as yt
@@ -124,7 +125,8 @@ def yt_download(song_arg, search_arg):
 
     if not os.path.exists(DOWNLOADS+search+".mp3"):
         print(DOWNLOADS+search+".mp3")
-        os.system("ln "+ DOWNLOADS+"\'"+song+".mp3\' " + DOWNLOADS+"\'"+search+".mp3\'")
+        subprocess.run(["ln", str(DOWNLOADS+""+song+".mp3"), str(DOWNLOADS+""+search+".mp3")])
+
 
 
 """
@@ -294,8 +296,7 @@ async def playd(ctx):
 
 @bot.command()
 async def download(ctx):
-song = ctx.message.content[6:]
-
+    song = ctx.message.content[6:]
     if len(song) > 0:
         print("Downloading Song: ", song, " Server: ", ctx.guild.id)
 
