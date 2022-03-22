@@ -370,8 +370,7 @@ async def playd(ctx):
 
         else:
             title, url = queueSong(ctx, song, False, True)
-            await ctx.send(title, url)    else:
-            queueSong(ctx, song, True, True)
+            await ctx.send(title, url)    
             
     else:
         for vclient in bot.voice_clients:
@@ -407,8 +406,7 @@ async def download(ctx):
         else:
             title, url = queueSong(ctx, song, False, True)
             await ctx.send(title, url)         
-        else:
-            queueSong(ctx, song, True, False)
+        
 
 @bot.command()
 async def resume(ctx):
