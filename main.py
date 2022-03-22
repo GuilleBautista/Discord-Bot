@@ -11,6 +11,11 @@ import threading
 
 import youtube_dl as yt
 
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+from pprint import pprint
+
+
 DOWNLOADS = "./downloads/"
 
 DOWNLOADS_FILE = "./downloads/queue.txt"
@@ -76,6 +81,7 @@ async def joinUserChannel(ctx):
     #await ctx.send("Joined channel: "+str(channel))
     return channel
 
+#Returns url, videotitle, song_searched and video_webpage
 def queryYt(song):
     try:
         ydl = yt.YoutubeDL({
@@ -127,6 +133,69 @@ def yt_download(song_arg, search_arg):
         print(DOWNLOADS+search+".mp3")
         subprocess.run(["ln", str(DOWNLOADS+""+song+".mp3"), str(DOWNLOADS+""+search+".mp3")])
 
+"""
+# Queue a given song, specifying if it should be downloaded or played.
+# It also searches locally to prevent unnecesary net conections
+"""
+def queueSong(ctx, song, download, play):
+    print("Getting Song: ", song, " Server: ", ctx.guild.id)
+    #Search locally
+    if os.path.exists(DOWNLOADS+song+".mp3"):
+        title = song
+        url = DOWNLOADS+song+".mp3"
+        search = song
+        web_url = DOWNLOADS+song+".mp3"
+    else:
+        url, title, search, web_url = queryYt(song)
+    
+    if download: queue_download(title, search)
+
+    if play: queue_func(str(ctx.guild.id), title, url, search, web_url)
+
+    return title, web_url
+
+    
+def getSpotifyPlaylist(ctx, pl_id, download, play):
+
+    sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
+
+    offset = 0
+
+    playlist_ids = []
+
+    #Retrieve songs until there are no more left
+    while True:
+        response = sp.playlist_items(pl_id,
+                                    offset=offset,
+                                    fields='items.track.id,total',
+                                    additional_types=['track'])
+        
+        if len(response['items']) == 0:
+            break
+        
+        pprint(response['items'])
+        for i in response['items']:
+            playlist_ids.append(i['track']['id'])
+
+        offset = offset + len(response['items'])
+        print(offset, "/", response['total'])
+
+    for i in playlist_ids:
+        track = sp.track(i)
+        name = track['name']
+        #album = track['album']['name']
+        
+        artists = ""
+        for j in track['artists']:
+            if j['name'] not in name:
+                artists +=j['name']+", "
+        
+        if artists[-2:] == ", ":
+            artists = artists[:-2]
+        
+        #Queue every song
+        queueSong(ctx, name+" - "+artists, download, play)
+
 
 
 """
@@ -160,7 +229,6 @@ async def play_music():
                     song_url = line[1]
                     song_search = line[2]
                     
-                    
                     if os.path.exists(DOWNLOADS+song_title+".mp3"):
                         source = discord.FFmpegPCMAudio(DOWNLOADS+song_title+".mp3")
                         vclient.play(source)
@@ -170,6 +238,9 @@ async def play_music():
                         vclient.play(source)
 
                     else: 
+                        if song_title == "empty_title":
+                            continue
+
                         try:
                             source = discord.FFmpegPCMAudio(song_url)
                             vclient.play(source)
@@ -187,7 +258,7 @@ async def play_music():
         except:     
             pass
 
-@tasks.loop(seconds=1)
+@tasks.loop(seconds=60)
 async def download_music():
     song, search = dequeue_download()
     if len(song) > 0:
@@ -231,7 +302,6 @@ async def dc(ctx):
             print("disconnecting from: ", vc.channel)
             await vc.disconnect()
 
-
 @bot.command()
 async def play(ctx):
     if await checkConnected(ctx.author.voice.channel)==False:
@@ -240,22 +310,30 @@ async def play(ctx):
     song = ctx.message.content[6:]
 
     if len(song) > 0:
-        print("Song: ", song, " Server: ", ctx.guild.id)
+        if "open.spotify.com/playlist" in song:
+            sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
+
+            pl_id = 'spotify:playlist:'+song.split("playlist/")[1].split("?")[0]
         
-        print(DOWNLOADS+song+".mp3")
+            response = sp.playlist_items(pl_id,
+                                        offset=0,
+                                        fields='items.track.id,total',
+                                        additional_types=['track'])
 
-        if os.path.exists(DOWNLOADS+song+".mp3"):
-            title = song
-            url = DOWNLOADS+song+".mp3"
-            search = song
-            web_url = DOWNLOADS+song+".mp3"
+            if response['total'] > 100:
+                msg = "Añadiendo "+str(response['total'])+" canciones a la cola (tremenda tula)"
+            else:
+                msg = "Añadiendo "+str(response['total'])+" canciones a la cola"
+
+            await ctx.send(msg)
+
+            t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, False, True))              
+            t.start()
+
         else:
-            url, title, search, web_url = queryYt(song)
-
-        queue_func(str(ctx.guild.id), title, url, search, web_url)
-
-        await ctx.send(title + "\n" + web_url)
-
+            title, url = queueSong(ctx, song, False, True)
+            await ctx.send(title, url)
+        
     else:
         for vclient in bot.voice_clients:
             if vclient.channel == ctx.author.voice.channel:
@@ -270,24 +348,31 @@ async def playd(ctx):
     song = ctx.message.content[6:]
 
     if len(song) > 0:
-        print("Downloading Song: ", song, " Server: ", ctx.guild.id)
+        if "open.spotify.com/playlist" in song:
+            sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
 
-        if os.path.exists(DOWNLOADS+song+".mp3"):
-            title = song
-            url = DOWNLOADS+song+".mp3"
-            search = song
-            web_url = DOWNLOADS+song+".mp3"
+            pl_id = 'spotify:playlist:'+song.split("playlist/")[1].split("?")[0]
+        
+            response = sp.playlist_items(pl_id,
+                                        offset=0,
+                                        fields='items.track.id,total',
+                                        additional_types=['track'])
+
+            if response['total'] > 100:
+                msg = "Añadiendo "+str(response['total'])+" canciones a la cola (tremenda tula)"
+            else:
+                msg = "Añadiendo "+str(response['total'])+" canciones a la cola"
+
+            await ctx.send(msg)
+
+            t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, True, True))              
+            t.start()
+
         else:
-            url, title, search, web_url = queryYt(song)
-
-        queue_download(title, search)
-
-        #play anyway
-        queue_func(str(ctx.guild.id), title, url, search, web_url)
-
-        await ctx.send(title + "\n" + web_url)
-
-
+            title, url = queueSong(ctx, song, False, True)
+            await ctx.send(title, url)    else:
+            queueSong(ctx, song, True, True)
+            
     else:
         for vclient in bot.voice_clients:
             if vclient.channel == ctx.author.voice.channel:
@@ -297,27 +382,33 @@ async def playd(ctx):
 @bot.command()
 async def download(ctx):
     song = ctx.message.content[6:]
+
     if len(song) > 0:
-        print("Downloading Song: ", song, " Server: ", ctx.guild.id)
+        if "open.spotify.com/playlist" in song:
+            sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
 
-        if os.path.exists(DOWNLOADS+song+".mp3"):
-            title = song
-            url = DOWNLOADS+song+".mp3"
-            search = song
-            web_url = DOWNLOADS+song+".mp3"
+            pl_id = 'spotify:playlist:'+song.split("playlist/")[1].split("?")[0]
+        
+            response = sp.playlist_items(pl_id,
+                                        offset=0,
+                                        fields='items.track.id,total',
+                                        additional_types=['track'])
+
+            if response['total'] > 100:
+                msg = "Añadiendo "+str(response['total'])+" canciones a la cola (tremenda tula)"
+            else:
+                msg = "Añadiendo "+str(response['total'])+" canciones a la cola"
+
+            await ctx.send(msg)
+
+            t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, True, False))              
+            t.start()
+
         else:
-            url, title, search, web_url = queryYt(song)
-
-        queue_download(title, search)
-
-        await ctx.send(title + "\n" + web_url)
-
-
-    else:
-        for vclient in bot.voice_clients:
-            if vclient.channel == ctx.author.voice.channel:
-                if vclient.is_paused():
-                    vclient.resume()
+            title, url = queueSong(ctx, song, False, True)
+            await ctx.send(title, url)         
+        else:
+            queueSong(ctx, song, True, False)
 
 @bot.command()
 async def resume(ctx):
@@ -380,6 +471,7 @@ async def queue(ctx):
 async def clear(ctx):
     server = str(ctx.guild.id)
     os.system("rm -rf "+QUEUE+str(server))
+    await ctx.send("He borrado la cola como mi ex borró mi autoestima")
 
 @bot.command()
 async def ping(ctx):
