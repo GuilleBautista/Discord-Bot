@@ -345,7 +345,7 @@ async def playd(ctx):
     if await checkConnected(ctx.author.voice.channel)==False:
         await joinUserChannel(ctx)
 
-    song = ctx.message.content[6:]
+    song = ctx.message.content[7:]
 
     if len(song) > 0:
         if "open.spotify.com/playlist" in song:
@@ -367,7 +367,7 @@ async def playd(ctx):
             t.start()
 
         else:
-            title, url = queueSong(ctx, song, False, True)
+            title, url = queueSong(ctx, song, True, True)
             await ctx.send(title+"\n"+url)    
             
     else:
@@ -378,7 +378,7 @@ async def playd(ctx):
 
 @bot.command()
 async def download(ctx):
-    song = ctx.message.content[6:]
+    song = ctx.message.content[10:]
 
     if len(song) > 0:
         if "open.spotify.com/playlist" in song:
@@ -400,7 +400,8 @@ async def download(ctx):
             t.start()
 
         else:
-            title, url = queueSong(ctx, song, False, True)
+            #Download=True, Play=False
+            title, url = queueSong(ctx, song, True, False)
             await ctx.send(title+"\n"+url)         
         
 

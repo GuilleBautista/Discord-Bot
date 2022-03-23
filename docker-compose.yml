@@ -4,5 +4,5 @@ services:
     build: .
     image: discord-bot
     volumes:
-      - {PATH-TO-DONLOADS-DIR}:/downloads:rw
-      - {PATH-TO-QUEUE-DIR}:/queue:rw
+      - ./downloads:/downloads:rw
+      - ./queue:/queue:rw
