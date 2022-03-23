@@ -3,6 +3,7 @@ services:
   bot:
     build: .
     image: discord-bot
+    restart: unless-stopped
     volumes:
       - ./downloads:/downloads:rw
       - ./queue:/queue:rw

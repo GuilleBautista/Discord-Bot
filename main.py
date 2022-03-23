@@ -453,13 +453,20 @@ async def queue(ctx):
         for l in lines:
             i+=1
             s = l.split(PLACEHOLDER)
-            out+=str(i)+". " + s[0] + "\n" + s[3] + "\n"
+            #We can only send messages with up to 2000 characters
+            if len(out) + len(str(i)+". " + s[0] + "\n" + s[3] + "\n") > 2000:
+                await ctx.send("La cola es muy grande para mandártela entera, te mando los primeros " + str(i-1) + " elementos.")
+                break
+            else:
+                out += str(i)+". " + s[0] + "\n" + s[3] + "\n"
         
         if len(out) > 0:
-            await ctx.send(out)
+            msg = await ctx.send(out)
+            await msg.edit(suppress=True)
+
         else:
             await ctx.send("La cola está vacía como el corazón de ella.")
-    except:
+    except FileNotFoundError:
         await ctx.send("La cola está vacía como el corazón de ella.")
 
 @bot.command()

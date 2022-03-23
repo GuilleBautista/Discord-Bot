@@ -1,9 +1,6 @@
 FROM python:latest
 WORKDIR /
 
-COPY main.py /
-COPY token.txt /
-
 #Python dependencies
 RUN pip install --upgrade pip
 RUN pip install discord
@@ -19,5 +16,8 @@ RUN apt install -y ffmpeg
 RUN mkdir /downloads
 RUN touch /downloads/queue.txt
 RUN mkdir /queue
+
+COPY main.py /
+COPY token.txt /
 
 CMD [ "python3", "./main.py"]
