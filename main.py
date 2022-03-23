@@ -24,6 +24,8 @@ QUEUE="./queue/"
 
 PLACEHOLDER = ";;;;;"
 
+MAX_DOWNLOAD_THREADS = 8
+
 """
 ================AUX FUNCTIONS===================
 """
@@ -156,16 +158,13 @@ def queueSong(ctx, song, download, play):
 
     
 def getSpotifyPlaylist(ctx, pl_id, download, play):
-
-    sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
-
     offset = 0
 
     playlist_ids = []
 
     #Retrieve songs until there are no more left
     while True:
-        response = sp.playlist_items(pl_id,
+        response = SP.playlist_items(pl_id,
                                     offset=offset,
                                     fields='items.track.id,total',
                                     additional_types=['track'])
@@ -181,7 +180,7 @@ def getSpotifyPlaylist(ctx, pl_id, download, play):
         print(offset, "/", response['total'])
 
     for i in playlist_ids:
-        track = sp.track(i)
+        track = SP.track(i)
         name = track['name']
         #album = track['album']['name']
         
@@ -202,13 +201,16 @@ def getSpotifyPlaylist(ctx, pl_id, download, play):
 ================BOT DECLARATION===================
 """
 
-f=open("token.txt", "r")
-
-TOKEN=f.readlines()[0]
+with open("token.txt", "r") as f:
+    lines = f.readlines()
+    TOKEN=lines[0][:-1]
+    SPOTIFY_ID = lines[1][:-1]
+    SPOTIFY_SECRET = lines[2][:-1]
 
 connections=[]
 
-f.close()
+SP = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(SPOTIFY_ID, SPOTIFY_SECRET))
+
 
 bot=commands.Bot(command_prefix = ".")
 
@@ -260,13 +262,13 @@ async def play_music():
 
 @tasks.loop(seconds=60)
 async def download_music():
-    song, search = dequeue_download()
-    if len(song) > 0:
-        #if not os.path.exists(DOWNLOADS+song+".mp3"):
-        t = threading.Thread(target=yt_download, args=(song, search))
-        t.start()
-        #t.join()
-
+    for i in range(0, MAX_DOWNLOAD_THREADS):
+        song, search = dequeue_download()
+        if len(song) > 0:
+            t = threading.Thread(target=yt_download, args=(song, search))
+            t.start()
+        time.sleep(0.5)
+            
 
 @bot.event
 async def on_ready():
@@ -311,11 +313,9 @@ async def play(ctx):
 
     if len(song) > 0:
         if "open.spotify.com/playlist" in song:
-            sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
-
             pl_id = 'spotify:playlist:'+song.split("playlist/")[1].split("?")[0]
         
-            response = sp.playlist_items(pl_id,
+            response = SP.playlist_items(pl_id,
                                         offset=0,
                                         fields='items.track.id,total',
                                         additional_types=['track'])
@@ -332,7 +332,7 @@ async def play(ctx):
 
         else:
             title, url = queueSong(ctx, song, False, True)
-            await ctx.send(title, url)
+            await ctx.send(title+"\n"+url)
         
     else:
         for vclient in bot.voice_clients:
@@ -349,11 +349,9 @@ async def playd(ctx):
 
     if len(song) > 0:
         if "open.spotify.com/playlist" in song:
-            sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
-
             pl_id = 'spotify:playlist:'+song.split("playlist/")[1].split("?")[0]
         
-            response = sp.playlist_items(pl_id,
+            response = SP.playlist_items(pl_id,
                                         offset=0,
                                         fields='items.track.id,total',
                                         additional_types=['track'])
@@ -370,7 +368,7 @@ async def playd(ctx):
 
         else:
             title, url = queueSong(ctx, song, False, True)
-            await ctx.send(title, url)    
+            await ctx.send(title+"\n"+url)    
             
     else:
         for vclient in bot.voice_clients:
@@ -384,11 +382,9 @@ async def download(ctx):
 
     if len(song) > 0:
         if "open.spotify.com/playlist" in song:
-            sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
-
             pl_id = 'spotify:playlist:'+song.split("playlist/")[1].split("?")[0]
         
-            response = sp.playlist_items(pl_id,
+            response = SP.playlist_items(pl_id,
                                         offset=0,
                                         fields='items.track.id,total',
                                         additional_types=['track'])
@@ -405,7 +401,7 @@ async def download(ctx):
 
         else:
             title, url = queueSong(ctx, song, False, True)
-            await ctx.send(title, url)         
+            await ctx.send(title+"\n"+url)         
         
 
 @bot.command()
