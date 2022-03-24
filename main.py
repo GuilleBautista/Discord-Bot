@@ -485,6 +485,27 @@ async def ping(ctx):
     # Send it to the user
     await ctx.send("pong! "+str(bot.latency))
 
+@bot.command()
+async def playnext(ctx):
+    await play(ctx)
+    
+    with open(QUEUE+str(ctx.guild.id), "r") as f:
+        lines = f.readlines()
+    
+    with open(QUEUE+str(ctx.guild.id), "w") as f:
+        f.write(lines[-1])
+        f.writelines(lines[:-1])
+
+@bot.command()
+async def playdnext(ctx):
+    await playd(ctx)
+    
+    with open(QUEUE+str(ctx.guild.id), "r") as f:
+        lines = f.readlines()
+    
+    with open(QUEUE+str(ctx.guild.id), "w") as f:
+        f.write(lines[-1])
+        f.writelines(lines[:-1])
 
 @bot.command()
 async def echo(ctx, *, content:str):
