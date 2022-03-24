@@ -1,9 +1,9 @@
 import os
 
+import random
 import time
 import discord
 from discord.ext import commands, tasks
-import time
 import asyncio
 
 import subprocess
@@ -489,6 +489,18 @@ async def ping(ctx):
 @bot.command()
 async def echo(ctx, *, content:str):
     await ctx.send(content)
+
+@bot.command()
+async def shuffle(ctx):
+    with open(QUEUE+str(ctx.guild.id), "r") as f:
+        lines = f.readlines()
+    
+    random.shuffle(lines)
+
+    with open(QUEUE+str(ctx.guild.id), "w") as f:
+        f.writelines(lines)
+    
+    await ctx.send("Mezclando las canciones como el ron con la cocacola.")
 
 
 bot.run(TOKEN)

@@ -1,8 +1,10 @@
 # TODO List
 
-Fix queue
+Add option to choose element in queue
 
 Add shuffle option
+
+Add playnext option
 
 Add option to get all songs from an spotify album
 
