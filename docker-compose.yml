@@ -7,3 +7,4 @@ services:
     volumes:
       - ./downloads:/downloads:rw
       - ./queue:/queue:rw
+      - ./voice_clients:/voice_clients:rw

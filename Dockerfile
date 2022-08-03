@@ -4,7 +4,7 @@ WORKDIR /
 #Python dependencies
 RUN pip install --upgrade pip
 RUN pip install discord
-RUN pip install youtube_dl
+RUN pip install yt-dlp
 RUN pip install spotipy
 RUN pip install PyNaCl
 
@@ -16,6 +16,7 @@ RUN apt install -y ffmpeg
 RUN mkdir /downloads
 RUN touch /downloads/queue.txt
 RUN mkdir /queue
+RUN mkdir /voice_clients
 
 COPY main.py /
 COPY token.txt /
