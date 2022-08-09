@@ -27,15 +27,14 @@ VOICE_CLIENTS="./voice_clients/"
 
 PLACEHOLDER = ";;;;;"
 
-DOWNLOAD_THREADS = 0
-MAX_DOWNLOAD_THREADS = 8
+MAX_DOWNLOAD_THREADS = 4
 
 #Timeout in seconds for the bot to leave a voice client
 TIMEOUT = 300
 
 """
 ================AUX FUNCTIONS===================
-"""    
+"""
 
 def queue_func(server, song_title, song_url, search, web_url, text_channel):
     with open(QUEUE+str(server), "a") as f:
@@ -54,11 +53,11 @@ def dequeue_func(server):
     with open(QUEUE+str(server), "r") as f:
         lines = f.readlines()
 
-    with open(QUEUE+str(server), "w") as f:        
+    with open(QUEUE+str(server), "w") as f:
         out = ""
         for i in range(1, len(lines)):
             out += lines[i]
-        
+
         if out!="":
             f.write(out)
         else:
@@ -73,14 +72,14 @@ def dequeue_download():
     if len(lines)==0:
         return "", "", "", ""
 
-    with open(DOWNLOADS_FILE, "w") as f:        
+    with open(DOWNLOADS_FILE, "w") as f:
         out = ""
         for i in range(1, len(lines)):
             out += lines[i]
         f.write(out)
 
     out = lines[0].split(PLACEHOLDER)
-    
+
     if len(out)>=4: return out[0], out[1], out[2], out[3]
     else: return out[0], out[1], "", ""
 
@@ -92,14 +91,14 @@ def dequeue_finished():
     if len(lines)==0:
         return "", "", "", ""
 
-    with open(FINISHED_FILE, "w") as f:        
+    with open(FINISHED_FILE, "w") as f:
         out = ""
         for i in range(1, len(lines)):
             out += lines[i]
         f.write(out)
 
     out = lines[0].split(PLACEHOLDER)
-    
+
     if len(out)>=4: return out[0], out[1], out[2], out[3]
     else: return out[0], out[1], "", ""
 
@@ -114,7 +113,7 @@ async def checkConnected(channel):
 
 async def joinUserChannel(ctx):
     #Join the user's channel
-    channel = ctx.author.voice.channel 
+    channel = ctx.author.voice.channel
     print("Joining channel... "+str(channel))
     await channel.connect()
     #await ctx.send("Joined channel: "+str(channel))
@@ -144,7 +143,6 @@ def queryYt(song):
         return "empty_url", "empty_title", song, "web_url"
 
 def yt_download(song_arg, search_arg, guild, text_channel):
-    global DOWNLOAD_THREADS
     song = song_arg.replace("|", "_")
     search = search_arg.replace("|", "_")
 
@@ -164,16 +162,18 @@ def yt_download(song_arg, search_arg, guild, text_channel):
                 "ytsearch:"+song,
                 download=True
             )
-    
+
     if search[0] == " ":
         search = search[1:]
 
     if not os.path.exists(DOWNLOADS+search+".mp3"):
         print(DOWNLOADS+search+".mp3")
         subprocess.run(["ln", str(DOWNLOADS+""+song+".mp3"), str(DOWNLOADS+""+search+".mp3")])
-    
-    queue_finished(song, result['entries'][0]['webpage_url'], guild, text_channel)
-    DOWNLOAD_THREADS -= 1
+
+    if result!=None:
+        queue_finished(song, result['entries'][0]['webpage_url'], guild, text_channel)
+    else:
+        queue_finished(song, "was already downloaded", guild, text_channel)
 
 """
 # Queue a given song, specifying if it should be downloaded or played.
@@ -189,7 +189,7 @@ def queueSong(ctx, song, download, play, verbose):
         web_url = DOWNLOADS+song+".mp3"
     else:
         url, title, search, web_url = queryYt(song)
-    
+
     if verbose and download: queue_download(title, search, ctx.guild.id, ctx.message.channel.id)
     elif download: queue_download(title, search, "", "")
 
@@ -213,10 +213,10 @@ def removeVc(vc):
 def checkVcTime(vc):
     with open(VOICE_CLIENTS+str(vc.session_id), "r") as f:
         t0 = f.read()
-    
+
     return time.time() - float(t0)
 
-    
+
 def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
     offset = 0
 
@@ -228,10 +228,10 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
                                     offset=offset,
                                     fields='items.track.id,total',
                                     additional_types=['track'])
-        
+
         if len(response['items']) == 0:
             break
-        
+
         pprint(response['items'])
         for i in response['items']:
             playlist_ids.append(i['track']['id'])
@@ -243,15 +243,15 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
         track = SP.track(i)
         name = track['name']
         #album = track['album']['name']
-        
+
         artists = ""
         for j in track['artists']:
             if j['name'] not in name:
                 artists +=j['name']+", "
-        
+
         if artists[-2:] == ", ":
             artists = artists[:-2]
-        
+
         #Queue every song
         queueSong(ctx, name+" - "+artists, download, play, verbose)
 
@@ -286,7 +286,7 @@ async def play_music():
             if os.path.exists(QUEUE+str(vclient.guild.id)):
                 if not vclient.is_playing() and not vclient.is_paused():
                     line = dequeue_func(vclient.guild.id).split(PLACEHOLDER)
-                    
+
                     song_title = line[0]
                     song_url = line[1]
                     song_search = line[2]
@@ -301,7 +301,7 @@ async def play_music():
                         source = discord.FFmpegPCMAudio(DOWNLOADS+song_search+".mp3")
                         vclient.play(source)
 
-                    else: 
+                    else:
                         if song_title == "empty_title":
                             continue
 
@@ -324,15 +324,13 @@ async def play_music():
                             if str(tc.id) == text_channel:
                                 await tc.send(song_title+"\n"+web_url)
 
-        except:     
+        except:
             pass
 
-@tasks.loop(seconds=1)
+@tasks.loop(seconds=6)
 async def download_music():
-    global DOWNLOAD_THREADS
     global MAX_DOWNLOAD_THREADS
-    if (DOWNLOAD_THREADS < MAX_DOWNLOAD_THREADS):
-        DOWNLOAD_THREADS += 1
+    if (threading.active_count() < MAX_DOWNLOAD_THREADS):
         song, search, guild, text_channel = dequeue_download()
         if len(song) > 0:
             t = threading.Thread(target=yt_download, args=(song, search, guild, text_channel))
@@ -673,7 +671,7 @@ async def queued(ctx):
             s = l.split(PLACEHOLDER)
             #We can only send messages with up to 2000 characters
             if len(out) + len(str(i)+". " + s[0] + "\n" + s[3] + "\n") > 2000:
-                await ctx.send("La cola es muy grande para mandártela entera, te mando las primeras " + str(i-1) + " canciones. En total hay " +str(len(lines)+" canciones."))
+                await ctx.send("La cola es muy grande para mandártela entera, te mando las primeras " + str(i-1) + " canciones. En total hay " +str(len(lines)) + " canciones.")
                 break
             else:
                 out += str(i)+". " + s[0] + "\n" + s[3] + "\n"

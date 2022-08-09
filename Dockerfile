@@ -12,6 +12,8 @@ RUN pip install PyNaCl
 RUN apt update
 RUN apt install -y ffmpeg
 
+RUN pip install aiohttp
+
 #Create queue and directory structure
 RUN mkdir /downloads
 RUN touch /downloads/queue.txt
