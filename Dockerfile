@@ -21,6 +21,7 @@ RUN touch /downloads/queue.txt
 RUN touch /downloads/db.txt
 RUN mkdir /queue
 RUN mkdir /voice_clients
+RUN mkdir /downloads/images
 
 COPY main.py /
 COPY token.txt /
