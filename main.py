@@ -14,7 +14,7 @@ import yt_dlp as yt
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from pprint import pprint
-
+import music_tag
 
 DOWNLOADS = "./downloads/"
 
@@ -27,7 +27,11 @@ VOICE_CLIENTS="./voice_clients/"
 
 PLACEHOLDER = ";;;;;"
 
+global MAX_DOWNLOAD_THREADS
 MAX_DOWNLOAD_THREADS = 4
+
+global SONG_DB 
+SONG_DB = {}
 
 #Timeout in seconds for the bot to leave a voice client
 TIMEOUT = 300
@@ -40,9 +44,10 @@ def queue_func(server, song_title, song_url, search, web_url, text_channel):
     with open(QUEUE+str(server), "a") as f:
         f.write(song_title+PLACEHOLDER+song_url+PLACEHOLDER+search+PLACEHOLDER+web_url+PLACEHOLDER+str(text_channel)+PLACEHOLDER+"\n")
 
-def queue_download(song_title, search, guild, text_channel):
+def queue_download(song_title, search, guild, text_channel, metadata):
+    #TODO: metadata
     with open(DOWNLOADS_FILE, "a") as f:
-        f.write(song_title+PLACEHOLDER+search+PLACEHOLDER+str(guild)+PLACEHOLDER+str(text_channel)+PLACEHOLDER+"\n")
+        f.write(song_title+PLACEHOLDER+search+PLACEHOLDER+str(guild)+PLACEHOLDER+str(text_channel)+PLACEHOLDER+str(metadata)+PLACEHOLDER+"\n")
 
 def queue_finished(song_title, search, guild, text_channel):
     with open(FINISHED_FILE, "a") as f:
@@ -143,10 +148,11 @@ def queryYt(song):
         return "empty_url", "empty_title", song, "web_url"
 
 def yt_download(song_arg, search_arg, guild, text_channel):
-    song = song_arg.replace("|", "_")
+    song = song_arg.replace("|", "_").replace("?", "9")
     search = search_arg.replace("|", "_")
-
-    if not os.path.exists(DOWNLOADS+song+".mp3"):
+    result = None
+    global SONG_DB
+    if search not in SONG_DB:
         ydl = yt.YoutubeDL({
                 'format': 'bestaudio/best',
                 'postprocessors': [{
@@ -166,10 +172,6 @@ def yt_download(song_arg, search_arg, guild, text_channel):
     if search[0] == " ":
         search = search[1:]
 
-    if not os.path.exists(DOWNLOADS+search+".mp3"):
-        print(DOWNLOADS+search+".mp3")
-        subprocess.run(["ln", str(DOWNLOADS+""+song+".mp3"), str(DOWNLOADS+""+search+".mp3")])
-
     if result!=None:
         queue_finished(song, result['entries'][0]['webpage_url'], guild, text_channel)
     else:
@@ -179,19 +181,21 @@ def yt_download(song_arg, search_arg, guild, text_channel):
 # Queue a given song, specifying if it should be downloaded or played.
 # It also searches locally to prevent unnecesary net conections
 """
-def queueSong(ctx, song, download, play, verbose):
+def queueSong(ctx, song, download, play, verbose, metadata):
     print("Getting Song: ", song, " Server: ", ctx.guild.id)
     #Search locally
-    if os.path.exists(DOWNLOADS+song+".mp3"):
-        title = song
-        url = DOWNLOADS+song+".mp3"
+    global SONG_DB
+    if song in SONG_DB:
+        title = SONG_DB[song]
+        url = DOWNLOADS+SONG_DB[song]+".mp3"
         search = song
-        web_url = DOWNLOADS+song+".mp3"
+        web_url = DOWNLOADS+SONG_DB[song]+".mp3"
     else:
         url, title, search, web_url = queryYt(song)
+        write_db(title, song)
 
-    if verbose and download: queue_download(title, search, ctx.guild.id, ctx.message.channel.id)
-    elif download: queue_download(title, search, "", "")
+    if verbose and download: queue_download(title, search, ctx.guild.id, ctx.message.channel.id, metadata)
+    elif download: queue_download(title, search, "", "", metadata)
 
     if play: queue_func(str(ctx.guild.id), title, url, search, web_url, ctx.message.channel.id)
 
@@ -251,9 +255,34 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
 
         if artists[-2:] == ", ":
             artists = artists[:-2]
+        metadata = {
+            "artist": artists,
+            "title": name,
+            "album": track['album']['name'],
+            "cover": track['album']['images'][-1],
+        }
 
         #Queue every song
-        queueSong(ctx, name+" - "+artists, download, play, verbose)
+        queueSong(ctx, name+" - "+artists, download, play, verbose, metadata)
+
+def load_db():
+    with open(DOWNLOADS+"db.txt", "r") as f:
+        lines = f.readlines()
+
+    for i in lines:
+        l = i.split(PLACEHOLDER)
+        global SONG_DB
+        SONG_DB[l[0]] = l[1][:-1]
+
+def write_db(song_title, song_search):
+    while song_search[0]==" ":
+        song_search=song_search[1:]
+
+    with open(DOWNLOADS+"db.txt", "a") as f:
+        f.write(song_search+PLACEHOLDER+song_title+"\n")
+    
+    global SONG_DB
+    SONG_DB[song_search] = song_title
 
 
 
@@ -287,20 +316,18 @@ async def play_music():
                 if not vclient.is_playing() and not vclient.is_paused():
                     line = dequeue_func(vclient.guild.id).split(PLACEHOLDER)
 
-                    song_title = line[0]
+                    song_title = line[0].replace("?", "9")
                     song_url = line[1]
                     song_search = line[2]
                     web_url = line[3]
                     text_channel = line[4]
-
-                    if os.path.exists(DOWNLOADS+song_title+".mp3"):
-                        source = discord.FFmpegPCMAudio(DOWNLOADS+song_title+".mp3")
+                    global SONG_DB
+                    if song_title in SONG_DB:
+                        source = discord.FFmpegPCMAudio(DOWNLOADS+SONG_DB[song_title]+".mp3")
                         vclient.play(source)
-
-                    elif os.path.exists(DOWNLOADS+song_search+".mp3"):
-                        source = discord.FFmpegPCMAudio(DOWNLOADS+song_search+".mp3")
+                    elif song_search in SONG_DB:
+                        source = discord.FFmpegPCMAudio(DOWNLOADS+SONG_DB[song_search]+".mp3")
                         vclient.play(source)
-
                     else:
                         if song_title == "empty_title":
                             continue
@@ -333,13 +360,19 @@ async def download_music():
     if (threading.active_count() < MAX_DOWNLOAD_THREADS):
         song, search, guild, text_channel = dequeue_download()
         if len(song) > 0:
-            t = threading.Thread(target=yt_download, args=(song, search, guild, text_channel))
-            t.start()
-            if len(text_channel) > 0:
-                g = bot.get_guild(int(guild))
-                for tc in g.text_channels:
-                    if str(tc.id) == text_channel:
-                        await tc.send("Downloading "+song)
+            global SONG_DB
+            if search not in SONG_DB or not os.path.exists(DOWNLOADS+song):
+                t = threading.Thread(target=yt_download, args=(song, search, guild, text_channel))
+                t.start()
+                if len(text_channel) > 0:
+                    g = bot.get_guild(int(guild))
+                    for tc in g.text_channels:
+                        if str(tc.id) == text_channel:
+                            await tc.send("Downloading "+song)
+                write_db(song, search)
+            else:
+                queue_finished(song, "was already downloaded", guild, text_channel)
+
 
 @tasks.loop(seconds=1)
 async def notify_finished():
@@ -378,6 +411,7 @@ async def on_ready():
     os.system("rm -rf "+VOICE_CLIENTS+"*")
     os.system("rm -rf "+QUEUE+"*")
 
+    load_db()
     print("Everything's all ready to go~")
 
 
@@ -395,6 +429,17 @@ async def join(ctx):
     #await ctx.send("Joined channel: "+str(channel))
     renewTime(vc)
 
+@bot.command()
+async def database(ctx):
+    out = ""
+    global SONG_DB
+    for i in SONG_DB:
+        out+=i+" : "+SONG_DB[i]+"\n"
+    
+    if(len(out) == 0):
+        out="Database empty"
+
+    await ctx.send(out)
 
 @bot.command()
 async def disconnect(ctx):
@@ -435,7 +480,7 @@ async def play(ctx):
             t.start()
 
         else:
-            title, url = queueSong(ctx, song, False, True, False)
+            title, url = queueSong(ctx, song, False, True, False, None)
         
     else:
         for vclient in bot.voice_clients:
@@ -470,7 +515,7 @@ async def playd(ctx):
             t.start()
 
         else:
-            title, url = queueSong(ctx, song, True, True, False)
+            title, url = queueSong(ctx, song, True, True, False, None)
            
     else:
         for vclient in bot.voice_clients:
@@ -505,7 +550,7 @@ async def playdv(ctx):
             t.start()
 
         else:
-            title, url = queueSong(ctx, song, True, True, True)
+            title, url = queueSong(ctx, song, True, True, True, None)
             
     else:
         for vclient in bot.voice_clients:
@@ -539,7 +584,7 @@ async def download(ctx):
 
         else:
             #Download=True, Play=False
-            title, url = queueSong(ctx, song, True, False, False)
+            title, url = queueSong(ctx, song, True, False, False, None)
 
 @bot.command()
 async def downloadv(ctx):
@@ -566,7 +611,7 @@ async def downloadv(ctx):
 
         else:
             #Download=True, Play=False
-            title, url = queueSong(ctx, song, True, False, True)
+            title, url = queueSong(ctx, song, True, False, True, None)
 
 
 @bot.command()

@@ -13,6 +13,7 @@ RUN apt update
 RUN apt install -y ffmpeg
 
 RUN pip install aiohttp
+RUN pip install music-tag
 
 #Create queue and directory structure
 RUN mkdir /downloads
