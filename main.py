@@ -14,7 +14,11 @@ import yt_dlp as yt
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from pprint import pprint
+
 import music_tag
+import json
+import requests
+import shutil
 
 DOWNLOADS = "./downloads/"
 
@@ -47,7 +51,7 @@ def queue_func(server, song_title, song_url, search, web_url, text_channel):
 def queue_download(song_title, search, guild, text_channel, metadata):
     #TODO: metadata
     with open(DOWNLOADS_FILE, "a") as f:
-        f.write(song_title+PLACEHOLDER+search+PLACEHOLDER+str(guild)+PLACEHOLDER+str(text_channel)+PLACEHOLDER+str(metadata)+PLACEHOLDER+"\n")
+        f.write(song_title+PLACEHOLDER+search+PLACEHOLDER+str(guild)+PLACEHOLDER+str(text_channel)+PLACEHOLDER+str(metadata).replace("\'", "\"")+PLACEHOLDER+"\n")
 
 def queue_finished(song_title, search, guild, text_channel):
     with open(FINISHED_FILE, "a") as f:
@@ -75,7 +79,7 @@ def dequeue_download():
         lines = f.readlines()
 
     if len(lines)==0:
-        return "", "", "", ""
+        return "", "", "", "", ""
 
     with open(DOWNLOADS_FILE, "w") as f:
         out = ""
@@ -85,8 +89,8 @@ def dequeue_download():
 
     out = lines[0].split(PLACEHOLDER)
 
-    if len(out)>=4: return out[0], out[1], out[2], out[3]
-    else: return out[0], out[1], "", ""
+    if len(out)>=4: return out[0], out[1], out[2], out[3], json.loads(out[4])
+    else: return out[0], out[1], "", "", json.loads(out[4])
 
 def dequeue_finished():
 
@@ -147,7 +151,7 @@ def queryYt(song):
     except:
         return "empty_url", "empty_title", song, "web_url"
 
-def yt_download(song_arg, search_arg, guild, text_channel):
+def yt_download(song_arg, search_arg, guild, text_channel, metadata):
     song = song_arg.replace("|", "_").replace("?", "9")
     search = search_arg.replace("|", "_")
     result = None
@@ -174,6 +178,23 @@ def yt_download(song_arg, search_arg, guild, text_channel):
 
     if result!=None:
         queue_finished(song, result['entries'][0]['webpage_url'], guild, text_channel)
+        #modify metadata
+        f = music_tag.load_file(DOWNLOADS+song+".mp3")
+        f['title']=metadata['title']
+        f['artist']=metadata['artist']
+        f['album']=metadata['album']
+
+        #Check if album image has already been downloaded
+        if not os.path.exists(DOWNLOADS+"images/"+metadata['album']):
+            res = requests.get(metadata['cover']['url'], stream=True)
+            with open(DOWNLOADS+"images/"+metadata['album'],'wb') as a:
+                shutil.copyfileobj(res.raw, a)
+
+        with open(DOWNLOADS+'images/'+metadata['album'], 'rb') as img_in:
+            f['artwork'] = img_in.read()
+        
+        f.save()
+
     else:
         queue_finished(song, "was already downloaded", guild, text_channel)
 
@@ -192,7 +213,6 @@ def queueSong(ctx, song, download, play, verbose, metadata):
         web_url = DOWNLOADS+SONG_DB[song]+".mp3"
     else:
         url, title, search, web_url = queryYt(song)
-        write_db(title, song)
 
     if verbose and download: queue_download(title, search, ctx.guild.id, ctx.message.channel.id, metadata)
     elif download: queue_download(title, search, "", "", metadata)
@@ -236,7 +256,6 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
         if len(response['items']) == 0:
             break
 
-        pprint(response['items'])
         for i in response['items']:
             playlist_ids.append(i['track']['id'])
 
@@ -244,6 +263,7 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
         print(offset, "/", response['total'])
 
     for i in playlist_ids:
+        print(i)
         track = SP.track(i)
         name = track['name']
         #album = track['album']['name']
@@ -259,11 +279,36 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
             "artist": artists,
             "title": name,
             "album": track['album']['name'],
-            "cover": track['album']['images'][-1],
+            #best image quality, worst would be the last of the list
+            "cover": track['album']['images'][0],
         }
 
         #Queue every song
         queueSong(ctx, name+" - "+artists, download, play, verbose, metadata)
+
+def getSpotifySong(ctx, song_id, download, play, verbose):
+    #TODO
+    track = SP.track(song_id)
+    name = track['name']
+    #album = track['album']['name']
+
+    artists = ""
+    for j in track['artists']:
+        if j['name'] not in name:
+            artists +=j['name']+", "
+
+    if artists[-2:] == ", ":
+        artists = artists[:-2]
+    metadata = {
+        "artist": artists,
+        "title": name,
+        "album": track['album']['name'],
+        #best image quality, worst would be the last of the list
+        "cover": track['album']['images'][0],
+    }
+
+    #Queue every song
+    queueSong(ctx, name+" - "+artists, download, play, verbose, metadata)
 
 def load_db():
     with open(DOWNLOADS+"db.txt", "r") as f:
@@ -358,11 +403,11 @@ async def play_music():
 async def download_music():
     global MAX_DOWNLOAD_THREADS
     if (threading.active_count() < MAX_DOWNLOAD_THREADS):
-        song, search, guild, text_channel = dequeue_download()
+        song, search, guild, text_channel, metadata = dequeue_download()
         if len(song) > 0:
             global SONG_DB
             if search not in SONG_DB or not os.path.exists(DOWNLOADS+song):
-                t = threading.Thread(target=yt_download, args=(song, search, guild, text_channel))
+                t = threading.Thread(target=yt_download, args=(song, search, guild, text_channel, metadata))
                 t.start()
                 if len(text_channel) > 0:
                     g = bot.get_guild(int(guild))
@@ -372,6 +417,8 @@ async def download_music():
                 write_db(song, search)
             else:
                 queue_finished(song, "was already downloaded", guild, text_channel)
+                if search not in SONG_DB:
+                    write_db(song, search)
 
 
 @tasks.loop(seconds=1)
@@ -411,7 +458,7 @@ async def on_ready():
     os.system("rm -rf "+VOICE_CLIENTS+"*")
     os.system("rm -rf "+QUEUE+"*")
 
-    load_db()
+    #load_db()
     print("Everything's all ready to go~")
 
 
@@ -478,7 +525,11 @@ async def play(ctx):
 
             t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, False, True, False))              
             t.start()
-
+        elif "open.spotify.com/track" in song:
+            pl_id = song.split("track/")[1].split("?")[0]
+        
+            t = threading.Thread(target=getSpotifySong, args=(ctx, pl_id, False, True, False))              
+            t.start()
         else:
             title, url = queueSong(ctx, song, False, True, False, None)
         
@@ -512,6 +563,11 @@ async def playd(ctx):
             await ctx.send(msg)
 
             t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, True, True, False))              
+            t.start()
+        elif "open.spotify.com/track" in song:
+            pl_id = song.split("track/")[1].split("?")[0]
+        
+            t = threading.Thread(target=getSpotifySong, args=(ctx, pl_id, True, True, False))              
             t.start()
 
         else:
@@ -548,6 +604,11 @@ async def playdv(ctx):
 
             t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, True, True, True))              
             t.start()
+        elif "open.spotify.com/track" in song:
+            pl_id = song.split("track/")[1].split("?")[0]
+        
+            t = threading.Thread(target=getSpotifySong, args=(ctx, pl_id, True, True, True))              
+            t.start()
 
         else:
             title, url = queueSong(ctx, song, True, True, True, None)
@@ -581,6 +642,11 @@ async def download(ctx):
 
             t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, True, False, False))              
             t.start()
+        elif "open.spotify.com/track" in song:
+            pl_id = song.split("track/")[1].split("?")[0]
+        
+            t = threading.Thread(target=getSpotifySong, args=(ctx, pl_id, True, False, False))              
+            t.start()
 
         else:
             #Download=True, Play=False
@@ -607,6 +673,11 @@ async def downloadv(ctx):
             await ctx.send(msg)
 
             t = threading.Thread(target=getSpotifyPlaylist, args=(ctx, pl_id, True, False, True))              
+            t.start()
+        elif "open.spotify.com/track" in song:
+            pl_id = song.split("track/")[1].split("?")[0]
+        
+            t = threading.Thread(target=getSpotifySong, args=(ctx, pl_id, True, False, True))              
             t.start()
 
         else:
