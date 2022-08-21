@@ -32,9 +32,9 @@ VOICE_CLIENTS="./voice_clients/"
 PLACEHOLDER = ";;;;;"
 
 global MAX_DOWNLOAD_THREADS
-MAX_DOWNLOAD_THREADS = 4
+MAX_DOWNLOAD_THREADS = 10
 
-global SONG_DB 
+global SONG_DB
 SONG_DB = {}
 
 #Timeout in seconds for the bot to leave a voice client
@@ -51,7 +51,7 @@ def queue_func(server, song_title, song_url, search, web_url, text_channel):
 def queue_download(song_title, search, guild, text_channel, metadata):
     #TODO: metadata
     with open(DOWNLOADS_FILE, "a") as f:
-        f.write(song_title+PLACEHOLDER+search+PLACEHOLDER+str(guild)+PLACEHOLDER+str(text_channel)+PLACEHOLDER+str(metadata).replace("\'", "\"")+PLACEHOLDER+"\n")
+        f.write(song_title+PLACEHOLDER+search+PLACEHOLDER+str(guild)+PLACEHOLDER+str(text_channel)+PLACEHOLDER+json.dumps(metadata).replace("\'", "\"")+PLACEHOLDER+"\n")
 
 def queue_finished(song_title, search, guild, text_channel):
     with open(FINISHED_FILE, "a") as f:
@@ -88,9 +88,14 @@ def dequeue_download():
         f.write(out)
 
     out = lines[0].split(PLACEHOLDER)
-
-    if len(out)>=4: return out[0], out[1], out[2], out[3], json.loads(out[4])
-    else: return out[0], out[1], "", "", json.loads(out[4])
+    #print("AAAAAAAAAAAAAAAAAAAAAAAA"+str(out))
+    if len(out)>=4:
+        try:
+            return out[0], out[1], out[2], out[3], json.loads(out[4].replace("'", ""))
+        except:
+            print("BBBBBBBBBBBBBBBBBBBAAAAAAAAAAAAAAAAA"+str(out))
+            return out[0], out[1], "", "", ""
+    else: return out[0], out[1], "", "", json.loads(out[4].replace("'", ""))
 
 def dequeue_finished():
 
@@ -179,7 +184,7 @@ def yt_download(song_arg, search_arg, guild, text_channel, metadata):
     if result!=None:
         queue_finished(song, result['entries'][0]['webpage_url'], guild, text_channel)
         #modify metadata
-        f = music_tag.load_file(DOWNLOADS+song+".mp3")
+        f = music_tag.load_file(DOWNLOADS+result['entries'][0]['title'].replace("|", "_").replace("?", "").replace("__", "_").replace("/", "_").replace("*", "_")+".mp3")
         f['title']=metadata['title']
         f['artist']=metadata['artist']
         f['album']=metadata['album']
@@ -192,7 +197,7 @@ def yt_download(song_arg, search_arg, guild, text_channel, metadata):
 
         with open(DOWNLOADS+'images/'+metadata['album'], 'rb') as img_in:
             f['artwork'] = img_in.read()
-        
+
         f.save()
 
     else:
@@ -264,6 +269,7 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
 
     for i in playlist_ids:
         print(i)
+        """
         track = SP.track(i)
         name = track['name']
         #album = track['album']['name']
@@ -282,9 +288,15 @@ def getSpotifyPlaylist(ctx, pl_id, download, play, verbose):
             #best image quality, worst would be the last of the list
             "cover": track['album']['images'][0],
         }
-
+        """
+        global MAX_DOWNLOAD_THREADS
+        while (threading.active_count() > MAX_DOWNLOAD_THREADS):
+            time.sleep(1)
+            print("Waiting for thread to finish...")
         #Queue every song
-        queueSong(ctx, name+" - "+artists, download, play, verbose, metadata)
+        t = threading.Thread(target=getSpotifySong, args=(ctx, i, download, play, verbose))
+        t.start()
+
 
 def getSpotifySong(ctx, song_id, download, play, verbose):
     #TODO
@@ -406,7 +418,7 @@ async def download_music():
         song, search, guild, text_channel, metadata = dequeue_download()
         if len(song) > 0:
             global SONG_DB
-            if search not in SONG_DB or not os.path.exists(DOWNLOADS+song):
+            if search not in SONG_DB and not os.path.exists(DOWNLOADS+song+".mp3"):
                 t = threading.Thread(target=yt_download, args=(song, search, guild, text_channel, metadata))
                 t.start()
                 if len(text_channel) > 0:
@@ -458,7 +470,7 @@ async def on_ready():
     os.system("rm -rf "+VOICE_CLIENTS+"*")
     os.system("rm -rf "+QUEUE+"*")
 
-    #load_db()
+    load_db()
     print("Everything's all ready to go~")
 
 
