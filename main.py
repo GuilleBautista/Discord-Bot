@@ -353,7 +353,7 @@ bot=commands.Bot(command_prefix = ".")
 ================BOT LOOPS===================
 """
 
-@tasks.loop(seconds=1)
+@tasks.loop(seconds=5)
 async def play_music():
     for vclient in bot.voice_clients:
         try:
